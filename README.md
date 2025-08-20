@@ -9,6 +9,7 @@
 - [Technologies Used](#technologies-used)
 - [Dataset](#dataset)
 - [Installation](#installation)
+- [Docker Deployment](#docker-deployment)
 - [Usage](#usage)
 - [Model Training](#model-training)
 - [Screenshots](#screenshots)
@@ -39,6 +40,7 @@
 - **Matplotlib / Seaborn** – Data visualization
 - **HTML, CSS, JavaScript** – Frontend interface
 - **Pickle** – Model serialization
+- **Docker** – Containerized deployment
 
 ---
 
@@ -78,17 +80,48 @@ venv\Scripts\activate         # Windows
 pip install -r requirements.txt
 ```
 
-4. **Run the Flask app**
+4. **Download the trained model (\~1.2GB) from Hugging Face**
+
+```bash
+wget https://huggingface.co/Thiruvarankan/flypredict-model/resolve/main/model.pkl
+```
+
+5. **Run the Flask app**
 
 ```bash
 python app.py
 ```
 
-5. Open your browser at:
+6. Open your browser at:
 
 ```
 http://127.0.0.1:5000/
 ```
+
+---
+
+## Docker Deployment
+
+* A `Dockerfile` is included for containerized deployment.
+* **Important:** The `model.pkl` (\~1.2GB) is **not included** in the repo. Download it from Hugging Face first:
+
+```bash
+wget https://huggingface.co/Thiruvarankan/flypredict-model/resolve/main/model.pkl
+```
+
+* Build the Docker image:
+
+```bash
+docker build -t flypredict-app .
+```
+
+* Run the container:
+
+```bash
+docker run -p 5000:5000 flypredict-app
+```
+
+* Open your browser at: `http://127.0.0.1:5000/` to use the app.
 
 ---
 
@@ -130,7 +163,9 @@ http://127.0.0.1:5000/
 
   * **Grid Search**
   * **Randomized Search**
-* Final model saved as: `model.pkl`
+* Final model saved as: `model.pkl` (\~1.2GB)
+
+  * Available for download: [Hugging Face link](https://huggingface.co/Thiruvarankan/flypredict-model/resolve/main/model.pkl)
 
 ---
 
@@ -166,4 +201,3 @@ http://127.0.0.1:5000/
 
 This project is licensed under the MIT License.
 
----
