@@ -1,22 +1,6 @@
 # FlyPredict 🚀
 
 **FlyPredict** is a machine learning application that predicts flight prices based on airline, route, travel dates, and number of stops. Built with a **Random Forest model** and a **Flask backend**, it provides instant price estimates through a user-friendly web interface, helping travelers plan trips efficiently and make informed decisions.
-
----
-
-## Table of Contents
-- [Features](#features)
-- [Technologies Used](#technologies-used)
-- [Dataset](#dataset)
-- [Installation](#installation)
-- [Docker Deployment](#docker-deployment)
-- [Usage](#usage)
-- [Model Training](#model-training)
-- [Screenshots](#screenshots)
-- [Future Improvements](#future-improvements)
-- [Contributing](#contributing)
-- [License](#license)
-
 ---
 
 ## Features
@@ -169,11 +153,12 @@ docker run -p 5000:5000 flypredict-app
 
 ---
 
-## Screenshots
+## 🎥 Demo Video
 
-*(Add screenshots of your web app here)*
-![Home Page](screenshots/home.png)
-![Prediction Result](screenshots/result.png)
+Watch the live demonstration of **FlyPredict** in action:  
+[![Demo Video](https://img.youtube.com/vi/U_WTWLfiYoo/0.jpg)](https://youtu.be/U_WTWLfiYoo)
+
+Or click this link to watch: [https://youtu.be/U_WTWLfiYoo](https://youtu.be/U_WTWLfiYoo)
 
 ---
 
