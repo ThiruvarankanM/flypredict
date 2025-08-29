@@ -2,8 +2,9 @@ from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import logging
 from datetime import datetime
-import requests
 import os
+import pickle
+import requests
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -12,23 +13,51 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'flight_price_predictor_2025'
 
-# Hugging Face Space API URL
-HF_SPACE_URL = os.environ.get("HF_SPACE_URL", "https://huggingface.co/spaces/Thiruvarankan/flypredict-model-space/api/predict/")
+# Hugging Face model URL
+HF_MODEL_URL = "https://huggingface.co/Thiruvarankan/flypredict-model/resolve/main/model.pkl"
+MODEL_PATH = "model.pkl"
 
-def call_remote_inference(data):
-    """Call Hugging Face Space for prediction"""
+# Download model if not exists
+if not os.path.exists(MODEL_PATH):
+    logger.info("📥 Downloading model from Hugging Face...")
     try:
-        resp = requests.post(HF_SPACE_URL, json=data, timeout=30)
-        resp.raise_for_status()
-        return resp.json()
+        with requests.get(HF_MODEL_URL, stream=True) as r:
+            r.raise_for_status()
+            with open(MODEL_PATH, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        logger.info("✅ Model downloaded successfully!")
     except Exception as e:
-        logger.error(f"Remote inference failed: {str(e)}")
-        return {"error": str(e)}
+        logger.error(f"❌ Failed to download model: {str(e)}")
 
-# Feature mappings
+# Load the model
+try:
+    with open(MODEL_PATH, "rb") as f:
+        model = pickle.load(f)
+    logger.info("✅ Model loaded successfully!")
+except Exception as e:
+    logger.error(f"❌ Failed to load model: {str(e)}")
+    model = None
+
+# Feature columns
+COLUMNS = [
+    'stops', 'days_left', 'duration', 'class',
+    'airline_Air_India', 'airline_AirAsia', 'airline_GO_FIRST',
+    'airline_Indigo', 'airline_SpiceJet', 'airline_Vistara',
+    'source_Bangalore', 'source_Chennai', 'source_Delhi',
+    'source_Hyderabad', 'source_Kolkata', 'source_Mumbai',
+    'dest_Bangalore', 'dest_Chennai', 'dest_Delhi',
+    'dest_Hyderabad', 'dest_Kolkata', 'dest_Mumbai',
+    'arrival_Early_Morning', 'arrival_Morning', 'arrival_Afternoon',
+    'arrival_Evening', 'arrival_Night', 'arrival_Late_Night',
+    'departure_Early_Morning', 'departure_Morning', 'departure_Afternoon',
+    'departure_Evening', 'departure_Night', 'departure_Late_Night'
+]
+
+# Mappings
 AIRLINE_MAPPING = {
     'IndiGo': 'airline_Indigo',
-    'Air India': 'airline_Air_India', 
+    'Air India': 'airline_Air_India',
     'SpiceJet': 'airline_SpiceJet',
     'Vistara': 'airline_Vistara',
     'GO FIRST': 'airline_GO_FIRST',
@@ -37,7 +66,7 @@ AIRLINE_MAPPING = {
 
 CITY_MAPPING = {
     'Delhi': 'Delhi',
-    'Mumbai': 'Mumbai', 
+    'Mumbai': 'Mumbai',
     'Bangalore': 'Bangalore',
     'Chennai': 'Chennai',
     'Kolkata': 'Kolkata',
@@ -47,7 +76,7 @@ CITY_MAPPING = {
 TIME_MAPPING = {
     'Early_Morning': 'Early_Morning',
     'Morning': 'Morning',
-    'Afternoon': 'Afternoon', 
+    'Afternoon': 'Afternoon',
     'Evening': 'Evening',
     'Night': 'Night',
     'Late_Night': 'Late_Night'
@@ -78,7 +107,32 @@ def validate_input_data(data):
         errors.append("Source and destination cannot be same")
     return errors
 
-# Insights based on prediction
+# Create DataFrame for prediction
+def create_prediction_dataframe(data):
+    df = pd.DataFrame([{col: 0 for col in COLUMNS}])
+    df.loc[0, 'stops'] = int(data['stops'])
+    df.loc[0, 'days_left'] = int(data['days_left'])
+    df.loc[0, 'duration'] = float(data['duration'])
+    df.loc[0, 'class'] = 1 if data['class'] == 'Business' else 0
+
+    airline_col = AIRLINE_MAPPING.get(data['airline'])
+    if airline_col in COLUMNS: df.loc[0, airline_col] = 1
+
+    source_col = f"source_{CITY_MAPPING.get(data['source'])}"
+    dest_col = f"dest_{CITY_MAPPING.get(data['dest'])}"
+    if source_col in COLUMNS: df.loc[0, source_col] = 1
+    if dest_col in COLUMNS: df.loc[0, dest_col] = 1
+
+    departure_col = f"departure_{TIME_MAPPING.get(data['departure'])}"
+    arrival_col = f"arrival_{TIME_MAPPING.get(data['arrival'])}"
+    if departure_col in COLUMNS: df.loc[0, departure_col] = 1
+    if arrival_col in COLUMNS: df.loc[0, arrival_col] = 1
+
+    if model:
+        df = df[model.feature_names_in_]
+    return df
+
+# Insights
 def get_price_insights(price, data):
     insights = []
     if price < 3000: insights.append("💰 Great deal! Below average price.")
@@ -105,6 +159,9 @@ def home():
 # Prediction route
 @app.route("/predict", methods=["POST"])
 def predict():
+    if model is None:
+        return render_template("index.html", error="Model not loaded.", form_data={})
+
     form_data = {k: request.form.get(k) for k in ['stops','days_left','duration','class','airline','source','dest','departure','arrival']}
     missing_fields = [k for k,v in form_data.items() if not v]
     if missing_fields:
@@ -121,18 +178,22 @@ def predict():
     if errors:
         return render_template("index.html", error="; ".join(errors), form_data=form_data)
 
-    # Call Hugging Face API
-    resp = call_remote_inference(form_data)
-    if "error" in resp:
-        return render_template("index.html", error=resp["error"], form_data=form_data)
-
-    final_price = resp.get("predicted_price", 0)
-    insights = get_price_insights(final_price, form_data)
-    return render_template("index.html", prediction=f"₹{final_price:,}", insights=" | ".join(insights), form_data=form_data)
+    try:
+        prediction_df = create_prediction_dataframe(form_data)
+        price_prediction = model.predict(prediction_df)[0]
+        final_price = max(1000, round(price_prediction))
+        insights = get_price_insights(final_price, form_data)
+        return render_template("index.html", prediction=f"₹{final_price:,}", insights=" | ".join(insights), form_data=form_data)
+    except Exception as e:
+        logger.error(f"Prediction error: {str(e)}")
+        return render_template("index.html", error="Prediction failed.", form_data=form_data)
 
 # API endpoint
 @app.route("/api/predict", methods=["POST"])
 def api_predict():
+    if model is None:
+        return jsonify({"error": "Model not loaded"}), 500
+
     data = request.get_json()
     if not data:
         return jsonify({"error": "No JSON data provided"}), 400
@@ -141,26 +202,28 @@ def api_predict():
     if errors:
         return jsonify({"error": errors}), 400
 
-    resp = call_remote_inference(data)
-    if "error" in resp:
-        return jsonify({"error": resp["error"]}), 500
-
-    final_price = resp.get("predicted_price", 0)
-    insights = get_price_insights(final_price, data)
-    return jsonify({
-        "predicted_price": final_price,
-        "formatted_price": f"₹{final_price:,}",
-        "insights": insights,
-        "status":"success"
-    })
+    try:
+        prediction_df = create_prediction_dataframe(data)
+        price_prediction = model.predict(prediction_df)[0]
+        final_price = max(1000, round(price_prediction))
+        insights = get_price_insights(final_price, data)
+        return jsonify({
+            "predicted_price": final_price,
+            "formatted_price": f"₹{final_price:,}",
+            "insights": insights,
+            "status":"success"
+        })
+    except Exception as e:
+        logger.error(f"Prediction error: {str(e)}")
+        return jsonify({"error": "Prediction failed"}), 500
 
 # Health check
 @app.route("/health")
 def health_check():
     return jsonify({
         "status":"healthy",
-        "model_status":"remote",
-        "timestamp":datetime.now().isoformat()
+        "model_status":"loaded" if model else "not loaded",
+        "timestamp": datetime.now().isoformat()
     })
 
 # Error handlers
@@ -178,6 +241,6 @@ if __name__ == "__main__":
     print("🛫 FLIGHT PRICE PREDICTOR - STARTING UP")
     print("="*60)
     print(f"🌐 Server running on http://0.0.0.0:5000")
-    print(f"🔗 Hugging Face Space URL: {HF_SPACE_URL}")
+    print(f"🔗 Model URL: {HF_MODEL_URL}")
     print("="*60)
     app.run(debug=True, host='0.0.0.0', port=5000)
