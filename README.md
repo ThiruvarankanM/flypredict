@@ -1,4 +1,4 @@
-## FlyPredict
+# FlyPredict
 
 A machine learning application that predicts flight prices using Random Forest algorithm. Built with Flask backend and web interface for instant price estimates.
 
